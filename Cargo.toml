@@ -18,7 +18,7 @@ features = ['global']
 doctest = false
 
 [target.'cfg(all(unix, not(target_arch = "wasm32")))'.dependencies]
-libc = { version = "0.2", default-features = false }
+sc = "0.2.7"
 
 [dependencies]
 # For more information on these dependencies see rust-lang/rust's

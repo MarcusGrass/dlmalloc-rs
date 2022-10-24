@@ -1,6 +1,5 @@
-extern crate libc;
-
 use core::ptr;
+use sc::syscall;
 use Allocator;
 
 /// System setting for Linux
@@ -20,16 +19,9 @@ static mut LOCK: libc::pthread_mutex_t = libc::PTHREAD_MUTEX_INITIALIZER;
 unsafe impl Allocator for System {
     fn alloc(&self, size: usize) -> (*mut u8, usize, u32) {
         let addr = unsafe {
-            libc::mmap(
-                0 as *mut _,
-                size,
-                libc::PROT_WRITE | libc::PROT_READ,
-                libc::MAP_ANON | libc::MAP_PRIVATE,
-                -1,
-                0,
-            )
+            syscall!(MMAP, 0, size, 2 | 1, 0x0020 | 0x0002, -1isize, 0) as isize
         };
-        if addr == libc::MAP_FAILED {
+        if addr < 0 {
             (ptr::null_mut(), 0, 0)
         } else {
             (addr as *mut u8, size, 0)
@@ -38,13 +30,16 @@ unsafe impl Allocator for System {
 
     #[cfg(target_os = "linux")]
     fn remap(&self, ptr: *mut u8, oldsize: usize, newsize: usize, can_move: bool) -> *mut u8 {
-        let flags = if can_move { libc::MREMAP_MAYMOVE } else { 0 };
-        let ptr = unsafe { libc::mremap(ptr as *mut _, oldsize, newsize, flags) };
-        if ptr == libc::MAP_FAILED {
+        let flags = if can_move { 1 } else { 0 };
+        let ptr = unsafe {
+            syscall!(MREMAP, ptr, oldsize, newsize, flags) as isize
+        };
+        if ptr < 0 {
             ptr::null_mut()
         } else {
             ptr as *mut u8
         }
+
     }
 
     #[cfg(target_os = "macos")]
@@ -55,11 +50,12 @@ unsafe impl Allocator for System {
     #[cfg(target_os = "linux")]
     fn free_part(&self, ptr: *mut u8, oldsize: usize, newsize: usize) -> bool {
         unsafe {
-            let rc = libc::mremap(ptr as *mut _, oldsize, newsize, 0);
-            if rc != libc::MAP_FAILED {
+            let rc = syscall!(MREMAP, ptr, oldsize, newsize, 0) as isize;
+            if rc >= 0 {
                 return true;
             }
-            libc::munmap(ptr.offset(newsize as isize) as *mut _, oldsize - newsize) == 0
+
+            syscall!(MUNMAP, ptr.offset(newsize as isize), oldsize - newsize) == 0
         }
     }
 
@@ -69,7 +65,9 @@ unsafe impl Allocator for System {
     }
 
     fn free(&self, ptr: *mut u8, size: usize) -> bool {
-        unsafe { libc::munmap(ptr as *mut _, size) == 0 }
+        unsafe {
+            syscall!(MUNMAP, ptr, size) == 0
+        }
     }
 
     fn can_release_part(&self, _flags: u32) -> bool {

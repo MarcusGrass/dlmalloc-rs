@@ -16,6 +16,8 @@
 #![deny(missing_docs)]
 #![cfg_attr(target_arch = "wasm64", feature(simd_wasm64))]
 
+extern crate sc;
+
 use core::cmp;
 use core::ptr;
 use sys::System;
